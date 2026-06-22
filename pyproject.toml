@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project]
+name = "MoonClaude"
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.12, <3.13"
+dependencies = [
+    "dotenv>=0.9.9",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
+
+
+[project.scripts]
+moon = "moon_claude.cli.main:main"
+moon-core = "moon_claude.core.app:run"
+moon-tui = "moon_claude.tui.__main__:main"
+
+# ---- Hatch：打 wheel 时从 src 布局收录包 ----
+[tool.hatch.build.targets.wheel]
+packages = ["src/moon_claude"] # 源码在 src/moon_claude
+
+
+# ---- 开发期依赖（PEP 735）----
+[dependency-groups]
+dev = [
+    "ruff>=0.4",            # 快速 linter + import 排序等
+    "mypy>=1.10",           # 静态类型检查
+    "pytest>=8.0",          # 单元测试
+    "pytest-asyncio>=0.23", # 异步测试支持
+]
+
+
+# ---- Ruff：统一代码风格 ----
+[tool.ruff]
+src = ["src"]            # 分析路径，便于识别第一方代码
+line-length = 100        # 行长上限
+target-version = "py312" # 语法/规则按 Python 3.12
+
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"] # pycodestyle 错误、Pyflakes、isort、pyupgrade
+ignore = []
+
+
+# ---- Mypy：严格类型检查 ----
+[tool.mypy]
+python_version = "3.12"
+strict = true                 # 启用严格模式
+mypy_path = "src"             # 将 src 加入模块搜索路径
+explicit_package_bases = true # 明确包根，减少隐式命名空间误判
+
+
+# ---- Pytest：默认发现 tests/，异步用例自动管理 event loop ----
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
