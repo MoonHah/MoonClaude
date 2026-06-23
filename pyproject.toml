@@ -12,6 +12,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "pydantic>=2.0",
     "python-dotenv>=1.0",
+    "rg>=0.0.76",
 ]
 
 
