@@ -1,11 +1,22 @@
 import asyncio
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from moon_claude.core.bus.envelope import INVALID_REQUEST, PARSE_ERROR, make_error
+from moon_claude.core.bus.envelope import (
+    INTERNAL_ERROR,
+    INVALID_REQUEST,
+    METHOD_NOT_FOUND,
+    PARSE_ERROR,
+    JsonRpcRequest,
+    JsonRpcSuccess,
+    make_error,
+)
+
+logger = logging.getLogger(__name__)
 
 # 异步 handler 类型
 type CommandHandler = Callable[[dict[str, Any]], Awaitable[Any]]
@@ -76,7 +87,7 @@ class SocketServer:
         writer: asyncio.StreamWriter,
     ) -> None:
         try:
-            json.loads(line)
+            raw: Any = json.loads(line)
         except json.JSONDecodeError as error:
             response = make_error(
                 None,
@@ -85,6 +96,62 @@ class SocketServer:
             )
             await self._send(writer, response)
             return
+
+        try:
+            request = JsonRpcRequest.model_validate(raw)
+        except ValidationError as error:
+            response = make_error(
+                None,
+                INVALID_REQUEST,
+                "Invalid Request",
+                str(error),
+            )
+            await self._send(writer, response)
+            return
+
+        handler = self._handlers.get(request.method)
+
+        if handler is None:
+            response = make_error(
+                request.id,
+                METHOD_NOT_FOUND,
+                f"Method not found: {request.method}",
+            )
+            await self._send(writer, response)
+            return
+
+        try:
+            result = await handler(request.params)
+        except ValidationError as error:
+            response = make_error(
+                request.id,
+                INVALID_REQUEST,
+                "Invalid params",
+                str(error),
+            )
+            await self._send(writer, response)
+            return
+        except Exception as error:
+            logger.exception("handler %s raised: %s", request.method, error)
+            response = make_error(
+                request.id,
+                INTERNAL_ERROR,
+                "Internal error",
+            )
+            await self._send(writer, response)
+            return
+
+        result_data: Any
+        if isinstance(result, BaseModel):
+            result_data = result.model_dump()
+        else:
+            result_data = result
+
+        success = JsonRpcSuccess(
+            id=request.id,
+            result=result_data,
+        )
+        await self._send(writer, success)
 
     async def _read_loop(
         self,
